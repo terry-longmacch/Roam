@@ -13,9 +13,9 @@ import subprocess
 import roam.utils
 
 from collections import defaultdict
-from PyQt4.QtNetwork import QNetworkRequest, QNetworkAccessManager, QNetworkReply
-from PyQt4.QtCore import QObject, pyqtSignal, QUrl, QThread
-from PyQt4.QtGui import QApplication
+from queue import Queue
+from urllib.parse import urlparse
+from urllib.request import urlopen
 
 from qgis.core import QgsNetworkAccessManager
 
@@ -48,7 +48,7 @@ def parse_serverprojects(configdata):
     if not configdata:
         return {}
 
-    if isinstance(configdata, basestring):
+    if isinstance(configdata, str):
         configdata = yaml.load(configdata)
 
     versions = defaultdict(dict)
@@ -314,7 +314,7 @@ class ProjectUpdater(QObject):
     @property
     def configurl(self):
         url = urlparse.urljoin(add_slash(self.server), "projects/roam.txt")
-        print "URL", url
+        print("URL", url)
         return url
 
     def check_updates(self, server, installedprojects):

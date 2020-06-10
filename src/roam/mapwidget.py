@@ -1,6 +1,7 @@
 import math
-from functools import partial
+from datetime import datetime
 from collections import defaultdict
+from functools import partial
 
 from PyQt4.QtCore import Qt, pyqtSignal, QSize, QPropertyAnimation, QObject, pyqtProperty, QEasingCurve, QThread, \
     QRectF, QLocale, QPointF, QPoint
@@ -445,11 +446,13 @@ class MapWidget(Ui_CanvasWidget, QMainWindow):
         self.positionlabel = QLabel('')
         self.gpslabel = QLabel("GPS: Not active")
         self.gpslabelposition = QLabel("")
+        self.gpslabelaveraging = QLabel('')                                     # averaging
 
         self.statusbar.addWidget(self.snappingbutton)
         self.statusbar.addWidget(spacer2)
         self.statusbar.addWidget(self.gpslabel)
         self.statusbar.addWidget(self.gpslabelposition)
+        self.statusbar.addWidget(self.gpslabelaveraging)                        # averaging
         self.statusbar.addPermanentWidget(self.scalebutton)
 
         self.canvas.extentsChanged.connect(self.updatestatuslabel)
@@ -527,38 +530,74 @@ class MapWidget(Ui_CanvasWidget, QMainWindow):
         scale, _ = self.scalewidget.toDouble(index.data(Qt.DisplayRole))
         self.canvas.zoomScale(1.0 / scale)
 
+    def update_gps_fixed_label(self, fixed, gpsinfo):
+        if not fixed:
+            self.gpslabel.setText("GPS: Acquiring fix")
+            self.gpslabelposition.setText("")
+            self.gpslabelaveraging.setText('')                                  # averaging
+
+    quality_mappings = {
+        0: "invalid",
+        1: "GPS",
+        2: "DGPS",
+        3: "PPS",
+        4: "Real Time Kinematic",
+        5: "Float RTK",
+        6: "Estimated",
+        7: "Manual input mode",
+        8: "Simulation mode"
+    }
+
     def update_gps_label(self, position, gpsinfo):
         """
         Update the GPS label in the status bar with the GPS status.
         :param position: The current GPS position.
         :param gpsinfo: The current extra GPS information.
         """
-        gps_fix = 'None'
-        if gpsinfo.quality == 1:
-            gps_fix = 'GPS'
-        elif gpsinfo.quality == 2:
-            gps_fix = 'DGPS'
-        elif gpsinfo.quality == 3:
-            gps_fix = 'PPS'
-        elif gpsinfo.quality == 4:
-            gps_fix = 'RTK Fixed'
-        elif gpsinfo.quality == 5:
-            gps_fix = 'RTK Float'
+        if not self.gps.connected:
+            return
 
-        self.gpslabel.setText("GPS: PDOP <b>{0:.2f}</b> HDOP <b>{1:.2f}</b> VDOP <b>{2:.2f}</b>  FIX <b>{3}</b> ".format(gpsinfo.pdop,
-                                                                                                           gpsinfo.hdop,
-                                                                                                           gpsinfo.vdop,
-                                                                                                           gps_fix))
+        fixtype = self.quality_mappings.get(gpsinfo.quality, "")
+        self.gpslabel.setText("DOP P:<b>{0:.2f}</b> H:<b>{1:.2f}</b> V:<b>{2:.2f}</b> "
+                              "Fix: <b>{3}</b> "
+                              "Sats: <b>{4}</b> ".format(gpsinfo.pdop,
+                                                        gpsinfo.hdop,
+                                                        gpsinfo.vdop,
+                                                        fixtype,
+                                                        gpsinfo.satellitesUsed))
 
-        places = roam.config.settings.get("gpsplaces", 6)
-        placesHeight = roam.config.settings.get("gpsplaces", 3)
-        self.gpslabelposition.setText("X <b>{x:.{places}f}</b> Y <b>{y:.{places}f}</b> Z <b>{z:.{placesHeight}f}</b>".format(x=position.x(),
-                                                                                               y=position.y(),
-                                                                                               z=gpsinfo.elevation,
-                                                                                               places=places,
-                                                                                               placesHeight=placesHeight))
+        places = roam.config.settings.get("gpsplaces", 8)
+
+        # if averaging, don't show this
+        if not roam.config.settings.get('gps_averaging', True):
+            self.gpslabelposition.setText("X: <b>{x:.{places}f}</b> "
+                                          "Y: <b>{y:.{places}f}</b> "
+                                          "Z: <b>{z}m</b> ".format(x=position.x(),
+                                                         y=position.y(),
+                                                         z=gpsinfo.elevation,
+                                                         places=places))
+        else: self.gpslabelposition.setText('')
+        # --- averaging -------------------------------------------------------
+        # if turned on
+        if roam.config.settings.get('gps_averaging', True):
+            time = roam.config.settings.get('gps_averaging_start_time', '')
+            # if currently happening
+            if roam.config.settings.get('gps_averaging_in_action', True):
+                time = datetime.now().replace(microsecond=0) - time.replace(microsecond=0)
+            count = roam.config.settings.get('gps_averaging_measurements', int)
+            avglabel = 'AVG: <b>%s / %s</b>' % (time, count)
+        else:
+            avglabel = ''
+        self.gpslabelaveraging.setText(avglabel)
+        # ---------------------------------------------------------------------
 
     def gps_disconnected(self):
+        self.gpslabel.setText("GPS: Not Active")
+        self.gpslabelposition.setText("")
+        self.gpslabelaveraging.setText("")
+        self.gpsMarker.hide()
+
+    def zoom_to_feature(self, feature):
         """
         Called when the GPS is disconnected. Updates the label in the status bar with the message.
         :return:

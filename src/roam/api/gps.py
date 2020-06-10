@@ -60,6 +60,9 @@ class GPSService(QObject):
         self._gpsupdate_frequency = 1.0
         self._gpsupdate_last = datetime.min
         self.gpslogfile = None
+        self.gpsConn = None
+        # for averaging
+        self.gpspoints = []
 
     def __del__(self):
         if not self.gpslogfile is None:
@@ -229,10 +232,33 @@ class GPSService(QObject):
             if (datetime.now() - self._gpsupdate_last).total_seconds() > self._gpsupdate_frequency:
                 self.gpsposition.emit(map_pos, gpsInfo)
                 self._gpsupdate_last = datetime.now()
-
-            self.postion = map_pos
+                # --- averaging -----------------------------------------------
+                # if turned on
+                if roam.config.settings.get('gps_averaging', True):
+                    # if currently happening
+                    if roam.config.settings.get('gps_averaging_in_action', True):
+                        self.gpspoints.append(map_pos)
+                        roam.config.settings['gps_averaging_measurements'] = len(self.gpspoints)
+                        roam.config.save()
+                    else:
+                        if self.gpspoints: self.gpspoints = []
+                # -------------------------------------------------------------
+            self._position = map_pos
             self.elevation = gpsInfo.elevation
 
+    # --- averaging func ------------------------------------------------------
+    def _average(self, data, function=statistics.median):
+        if not data:
+            return 0, 0
+        x, y = zip(*data)
+        return function(x), function(y)
+
+    def average_func(self, gps_points, average_kwargs={}):
+        return self._average(
+            tuple((point.x(), point.y()) for point in gps_points),
+            **average_kwargs
+        )
+    # -------------------------------------------------------------------------
 
 class FileGPSService(GPSService):
     def __init__(self, filename):
@@ -245,7 +271,7 @@ class FileGPSService(GPSService):
 
     def connectGPS(self, portname):
         # Normally the portname is passed but we will take a filename
-        # because it's a fake GPS service  
+        # because it's a fake GPS service
         if not self.isConnected:
             self.file = open(self.filename, "r")
             self.timer.start()
