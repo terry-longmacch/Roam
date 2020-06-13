@@ -1,6 +1,4 @@
 import os
-import pynmea2
-
 from datetime import datetime
 
 from PyQt4.QtCore import QObject, pyqtSignal, QDate, QDateTime, QTime, Qt, QTimer
@@ -246,8 +244,13 @@ class GPSService(QObject):
             self._position = map_pos
             self.elevation = gpsInfo.elevation
 
+    def median(lst):
+        n = len(lst)
+        s = sorted(lst)
+        return (sum(s[n//2-1:n//2+1])/2.0, s[n//2])[n % 2] if n else None
+
     # --- averaging func ------------------------------------------------------
-    def _average(self, data, function=statistics.median):
+    def _average(self, data, function=median):
         if not data:
             return 0, 0
         x, y = zip(*data)
