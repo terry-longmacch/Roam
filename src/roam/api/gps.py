@@ -1,4 +1,6 @@
 import os
+import pynmea2
+
 from datetime import datetime
 
 from PyQt4.QtCore import QObject, pyqtSignal, QDate, QDateTime, QTime, Qt, QTimer
