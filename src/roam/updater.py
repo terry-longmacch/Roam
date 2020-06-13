@@ -1,27 +1,21 @@
-import yaml
 import functools
 import os
-import re
-import zipfile
-import urlparse
-import urllib
-import urllib2
-import Queue
-import logging
 import subprocess
-
-import roam.utils
-
+import urllib
+import urllib.parse
+import zipfile
 from collections import defaultdict
 from queue import Queue
-from urllib.parse import urlparse
-from urllib.request import urlopen
+from urllib.request import urlopen, urljoin
 
+import yaml
+from qgis.PyQt.QtCore import QObject, pyqtSignal, QUrl, QThread
+from qgis.PyQt.QtNetwork import QNetworkRequest, QNetworkReply
 from qgis.core import QgsNetworkAccessManager
 
-from roam.api import RoamEvents
-import roam.project
 import roam.config
+import roam.project
+import roam.utils
 
 
 class UpdateExpection(Exception):
@@ -29,7 +23,7 @@ class UpdateExpection(Exception):
 
 
 def quote_url(url):
-    return urllib.quote(url, safe="%/:=&?~#+!$,;'@()*[]")
+    return urllib.parse.quote(url, safe="%/:=&?~#+!$,;'@()*[]")
 
 
 def add_slash(url):
@@ -48,12 +42,12 @@ def parse_serverprojects(configdata):
     if not configdata:
         return {}
 
-    if isinstance(configdata, str):
+    if isinstance(configdata, bytes):
         configdata = yaml.load(configdata)
 
     versions = defaultdict(dict)
     datadate = configdata.get('data_date', None)
-    for project, data in configdata['projects'].iteritems():
+    for project, data in configdata['projects'].items():
         version = int(data["version"])
         path = project + ".zip"
         title = data['title']
@@ -83,7 +77,7 @@ def install_project(info, basefolder, serverurl, updateMode=False):
         filename = "{}-Install.zip".format(info['name'])
 
     serverurl = add_slash(serverurl)
-    url = urlparse.urljoin(serverurl, "projects/{}".format(filename))
+    url = urljoin(serverurl, "projects/{}".format(filename))
 
     tempfolder = os.path.join(basefolder, "_updates")
     if not os.path.exists(tempfolder):
@@ -115,8 +109,8 @@ def download_file(url, fileout):
 
     roam.utils.debug("Opening URL: {}".format(url))
     try:
-        result = urllib2.urlopen(url)
-    except urllib2.HTTPError as ex:
+        result = urlopen(url)
+    except urllib.error.HTTPError as ex:
         if ex.code == 404:
             roam.utils.warning("Can't find URL: {}".format(url))
         else:
@@ -185,13 +179,13 @@ def updateable_projects(projects, serverprojects):
 
 def new_projects(projects, serverprojects):
     names = [project.basefolder for project in projects]
-    for projectname, versions in serverprojects.iteritems():
+    for projectname, versions in serverprojects.items():
         if projectname not in names:
             info = get_project_info(projectname, serverprojects)
             yield info
 
 
-forupdate = Queue.Queue()
+forupdate = Queue()
 
 
 class UpdateWorker(QObject):
@@ -207,9 +201,9 @@ class UpdateWorker(QObject):
     def check_url_found(self, url):
         url = quote_url(url)
         try:
-            result = urllib2.urlopen(url)
+            result = urlopen(url)
             return result.code == 200
-        except urllib2.HTTPError as ex:
+        except urllib.error.HTTPError as ex:
             return False
 
     def fetch_data(self, rootfolder, filename, serverurl):
@@ -223,7 +217,7 @@ class UpdateWorker(QObject):
             os.mkdir(tempfolder)
 
         filename = "{}.zip".format(filename)
-        url = urlparse.urljoin(serverurl, "projects/{}".format(filename))
+        url = urljoin(serverurl, "projects/{}".format(filename))
         zippath = os.path.join(tempfolder, filename)
         if not self.check_url_found(url):
             yield "Skipping data download"
@@ -311,9 +305,8 @@ class ProjectUpdater(QObject):
         self.worker.projectInstalled.connect(self.projectInstalled)
         self.updatethread.started.connect(self.worker.run)
 
-    @property
     def configurl(self):
-        url = urlparse.urljoin(add_slash(self.server), "projects/roam.txt")
+        url = urljoin(add_slash(self.server), "projects/roam.txt")
         print("URL", url)
         return url
 
@@ -322,7 +315,7 @@ class ProjectUpdater(QObject):
             return
 
         self.server = server
-        req = QNetworkRequest(QUrl(self.configurl))
+        req = QNetworkRequest(QUrl(self.configurl()))
         reply = self.net.get(req)
         reply.finished.connect(functools.partial(self.list_versions, reply, installedprojects))
 
