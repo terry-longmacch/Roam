@@ -12,6 +12,8 @@ from qgis.core import (QgsGPSDetector, QgsGPSConnectionRegistry, QgsPoint, \
 from roam.utils import log, info, logger
 from roam.config import settings as config
 
+import roam.utils
+
 NMEA_FIX_BAD = 1
 NMEA_FIX_2D = 2
 NMEA_FIX_3D = 3

@@ -554,7 +554,7 @@ class MapWidget(Ui_CanvasWidget, QMainWindow):
         :param position: The current GPS position.
         :param gpsinfo: The current extra GPS information.
         """
-        if not self.gps.connected:
+        if not self.gps.isConnected:
             return
 
         fixtype = self.quality_mappings.get(gpsinfo.quality, "")
